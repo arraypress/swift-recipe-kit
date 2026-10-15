@@ -24,6 +24,7 @@ macOS 14 / iOS 17, Swift 6.2 tools, no dependencies.
 | `SlotFilling` | Check a caller's values against the slots, fill defaults, turn known values into phrases, replace markers |
 | `VarParsing` | `--var name=value`: names trimmed and lower-cased, a name given twice refused |
 | `RecipeJSON` + `RecipeFormat` | Write pretty and key-sorted; read strictly — version gate, every key checked per section (in every item of an array too: `layers.*.params`), wrong types named by path, "did you mean" on request |
+| `refuseUnknownKeys` | Strict reading for a file with no version and no fixed outline — a design, a theme — whose types decode themselves: each `init(from:)` refuses a key it does not have, by its whole path, with "did you mean" |
 | `FieldSetter` + `FieldKind` | `--set path=value` on any `Codable` recipe: read the value by its kind, set it in the JSON, decode back; `layers.0.gain` reaches into an array |
 | `FieldPaths` | `seed` finds `settings.seed`: exact path, else the first path ending in it; `layers.1.gain` fits `layers.*.gain`; the closest name for a typo |
 | `RecipeFiles` + `RecipePaths` | Save (never overwriting unasked), load through a strict reader; paths stored relative to the recipe |
@@ -119,9 +120,30 @@ An index past the end is refused, never padded; an empty value at an item remove
 a short name up to three in a long one) — for sections too long to list usefully. It is
 off by default, so 0.1 callers read the same messages.
 
+## Files with no version
+
+A design or a theme is hand-written, nested, and has shapes a section list cannot say — a
+bare string standing for an object, an item of an array, a value in a dictionary. Its
+types decode themselves, so each refuses what it does not have before reading what it
+does:
+
+```swift
+init(from decoder: Decoder) throws {
+    try decoder.refuseUnknownKeys(CodingKeys.self, noun: "design")   // CodingKeys: CaseIterable
+    let c = try decoder.container(keyedBy: CodingKeys.self)
+    …
+}
+// {"page": {"marign": 40}} → page.marign is not a design field — did you mean page.margin?
+// {"headings": [{}, {"sise": 14}]} → headings.1.sise is not a design field — did you mean headings.1.size?
+```
+
+The error is a `RecipeError`, thrown through `JSONDecoder` unchanged. A value that is not
+an object is left to the decode that follows. Used by the document libraries
+(swift-markdown-pdf, swift-resume-pdf, swift-deck-kit, swift-document-theme).
+
 ## Tests
 
-`swift test`: 38 tests, no network, no model.
+`swift test`: 42 tests, no network, no model.
 
 ## Licence
 

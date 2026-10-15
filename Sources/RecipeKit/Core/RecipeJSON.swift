@@ -64,13 +64,21 @@ public enum RecipeJSON {
     /// Refuses the first key (alphabetically) of `object` that `known` does
     /// not list, naming every key it could have been — or, with `suggests`,
     /// only the one it was most likely meant to be, when one is close.
+    /// `noun` says what kind of file the field belongs to: `a recipe field`,
+    /// `a design field`.
     public static func unknownKeys(in object: [String: Any], known: [String], at prefix: String,
-                                   suggests: Bool = false) throws(RecipeError) {
-        guard let unknown = object.keys.sorted().first(where: { !known.contains($0) }) else { return }
+                                   suggests: Bool = false, noun: String = "recipe") throws(RecipeError) {
+        try unknownKeys(Array(object.keys), known: known, at: prefix, suggests: suggests, noun: noun)
+    }
+
+    /// ``unknownKeys(in:known:at:suggests:noun:)`` for the keys alone.
+    static func unknownKeys(_ keys: [String], known: [String], at prefix: String,
+                            suggests: Bool, noun: String) throws(RecipeError) {
+        guard let unknown = keys.sorted().first(where: { !known.contains($0) }) else { return }
         if suggests, let close = FieldPaths.closest(unknown, among: known) {
-            throw RecipeError("\(prefix)\(unknown) is not a recipe field — did you mean \(prefix)\(close)?")
+            throw RecipeError("\(prefix)\(unknown) is not a \(noun) field — did you mean \(prefix)\(close)?")
         }
-        throw RecipeError("\(prefix)\(unknown) is not a recipe field (\(known.map { prefix + $0 }.joined(separator: ", ")))")
+        throw RecipeError("\(prefix)\(unknown) is not a \(noun) field (\(known.map { prefix + $0 }.joined(separator: ", ")))")
     }
 
     /// A decoding path as a dotted field name: `settings.seed`, `scenes.2`.
