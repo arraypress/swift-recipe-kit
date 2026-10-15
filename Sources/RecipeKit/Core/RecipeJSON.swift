@@ -7,7 +7,8 @@
 //  Recipes as JSON: written pretty, key-sorted and with slashes left alone,
 //  so a recipe diffs well and replays byte for byte; read strictly — a
 //  newer format, a key the format does not have, or a value of the wrong
-//  type is an error that names the field, never a quiet difference.
+//  type is an error that names the field, never a quiet difference. A
+//  section can sit in every item of an array (`layers.*.params`).
 //
 
 import Foundation
@@ -37,11 +38,12 @@ public enum RecipeJSON {
         guard (1...max(1, format.version)).contains(version) else {
             throw RecipeError("it is format \(version); this reads format \(format.version)")
         }
-        try unknownKeys(in: root, known: format.rootKeys, at: "")
+        try unknownKeys(in: root, known: format.rootKeys, at: "", suggests: format.suggests)
         for section in format.sections {
-            guard let value = self.value(at: section.path, in: root), !(value is NSNull) else { continue }
-            guard let object = value as? [String: Any] else { throw RecipeError("\"\(section.path)\" is not an object") }
-            try unknownKeys(in: object, known: section.keys, at: section.path + ".")
+            for (path, value) in values(at: section.path, in: root) where !(value is NSNull) {
+                guard let object = value as? [String: Any] else { throw RecipeError("\"\(path)\" is not an object") }
+                try unknownKeys(in: object, known: section.keys, at: path + ".", suggests: format.suggests)
+            }
         }
         try check?(root)
         do { return try JSONDecoder().decode(Value.self, from: data) } catch let DecodingError.typeMismatch(_, context) {
@@ -49,18 +51,26 @@ public enum RecipeJSON {
         } catch let DecodingError.keyNotFound(key, context) {
             throw RecipeError("\(path(context.codingPath + [key])) is missing")
         } catch let DecodingError.dataCorrupted(context) {
-            throw RecipeError("\(path(context.codingPath)) is not a value it can hold")
+            // A number the field's type cannot hold (-7 for a UInt64) comes
+            // with no path; the underlying error says which number.
+            guard context.codingPath.isEmpty else { throw RecipeError("\(path(context.codingPath)) is not a value it can hold") }
+            let detail = (context.underlyingError as NSError?)?.userInfo["NSDebugDescription"] as? String ?? context.debugDescription
+            throw RecipeError("a value is not one its field can hold: \(detail)")
         } catch {
             throw RecipeError(error.localizedDescription)
         }
     }
 
     /// Refuses the first key (alphabetically) of `object` that `known` does
-    /// not list, naming every key it could have been.
-    public static func unknownKeys(in object: [String: Any], known: [String], at prefix: String) throws(RecipeError) {
-        if let unknown = object.keys.sorted().first(where: { !known.contains($0) }) {
-            throw RecipeError("\(prefix)\(unknown) is not a recipe field (\(known.map { prefix + $0 }.joined(separator: ", ")))")
+    /// not list, naming every key it could have been — or, with `suggests`,
+    /// only the one it was most likely meant to be, when one is close.
+    public static func unknownKeys(in object: [String: Any], known: [String], at prefix: String,
+                                   suggests: Bool = false) throws(RecipeError) {
+        guard let unknown = object.keys.sorted().first(where: { !known.contains($0) }) else { return }
+        if suggests, let close = FieldPaths.closest(unknown, among: known) {
+            throw RecipeError("\(prefix)\(unknown) is not a recipe field — did you mean \(prefix)\(close)?")
         }
+        throw RecipeError("\(prefix)\(unknown) is not a recipe field (\(known.map { prefix + $0 }.joined(separator: ", ")))")
     }
 
     /// A decoding path as a dotted field name: `settings.seed`, `scenes.2`.
@@ -68,13 +78,22 @@ public enum RecipeJSON {
         keys.map { $0.intValue.map(String.init) ?? $0.stringValue }.joined(separator: ".")
     }
 
-    /// The value at a dotted path, or `nil` when a step is missing or not an object.
-    static func value(at path: String, in root: [String: Any]) -> Any? {
-        var current: Any? = root
-        for key in path.split(separator: ".") {
-            guard let object = current as? [String: Any] else { return nil }
-            current = object[String(key)]
+    /// The values at a dotted path, each with its own path: one, or none when
+    /// a step is missing or not an object. A `*` step goes into every item of
+    /// an array — `layers.*.params` is each layer's `params`, at
+    /// `layers.0.params`, `layers.1.params` — and finds nothing in anything else.
+    static func values(at path: String, in root: [String: Any]) -> [(path: String, value: Any)] {
+        var found: [(path: [String], value: Any)] = [([], root)]
+        for key in path.split(separator: ".").map(String.init) {
+            found = found.flatMap { step -> [(path: [String], value: Any)] in
+                if key == "*" {
+                    guard let array = step.value as? [Any] else { return [] }
+                    return array.enumerated().map { (step.path + [String($0.offset)], $0.element) }
+                }
+                guard let value = (step.value as? [String: Any])?[key] else { return [] }
+                return [(step.path + [key], value)]
+            }
         }
-        return current
+        return found.map { ($0.path.joined(separator: "."), $0.value) }
     }
 }

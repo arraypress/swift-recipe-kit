@@ -28,18 +28,28 @@ public struct RecipeFormat: Sendable, Equatable {
     /// The objects inside, by dotted path, and the keys each allows.
     public var sections: [Section]
 
+    /// How a key it does not know is refused: `false` lists every key it
+    /// could have been; `true` names the close one (`did you mean
+    /// layers.0.params.drift?`) when there is one, and lists them otherwise —
+    /// for sections too long to list usefully.
+    public var suggests: Bool
+
     /// A format from its parts.
-    public init(versionKey: String, version: Int, rootKeys: [String], sections: [Section]) {
+    public init(versionKey: String, version: Int, rootKeys: [String], sections: [Section], suggests: Bool = false) {
         self.versionKey = versionKey
         self.version = version
         self.rootKeys = rootKeys
         self.sections = sections
+        self.suggests = suggests
     }
 
-    /// An object in a recipe — `settings`, `request.yue` — and its keys.
+    /// An object in a recipe — `settings`, `request.yue`, `layers.*.params` —
+    /// and its keys.
     public struct Section: Sendable, Equatable {
 
-        /// Dotted from the top: `request.yue`.
+        /// Dotted from the top: `request.yue`. A `*` step stands for every
+        /// item of an array: `layers.*` is each layer, `layers.*.params` each
+        /// layer's `params`.
         public var path: String
 
         /// The keys it allows.
