@@ -17,11 +17,33 @@ public enum RecipePaths {
     public static func expanded(_ path: String) -> String { (path as NSString).expandingTildeInPath }
 
     /// `path` as a recipe in `folder` should hold it: relative when the file
-    /// is inside that folder, absolute otherwise.
+    /// is inside that folder, absolute otherwise. Inside is decided on real
+    /// locations, symlinks resolved on both sides — `/tmp` is `/private/tmp`,
+    /// and a file not written yet is placed by the folder it will go in — so
+    /// one path typed through a link and the other not still meet.
     public static func stored(_ path: String, from folder: URL) -> String {
         let absolute = URL(fileURLWithPath: expanded(path)).standardizedFileURL.path
-        let base = folder.standardizedFileURL.path + "/"
-        return absolute.hasPrefix(base) ? String(absolute.dropFirst(base.count)) : absolute
+        let real = resolved(absolute)
+        let base = resolved(folder.standardizedFileURL.path) + "/"
+        return real.hasPrefix(base) ? String(real.dropFirst(base.count)) : absolute
+    }
+
+    /// `path` (absolute, standardized) with every symlink resolved: the
+    /// longest part that exists goes through `realpath`, and the rest — a
+    /// file or folders not made yet — is put back after it.
+    static func resolved(_ path: String) -> String {
+        var existing = path
+        var rest: [String] = []
+        while !existing.isEmpty, existing != "/" {
+            if let real = realpath(existing, nil) {
+                defer { free(real) }
+                let head = String(cString: real)
+                return rest.isEmpty ? head : (head == "/" ? "" : head) + "/" + rest.reversed().joined(separator: "/")
+            }
+            rest.append((existing as NSString).lastPathComponent)
+            existing = (existing as NSString).deletingLastPathComponent
+        }
+        return path
     }
 
     /// A path from a recipe in `folder`, made usable from anywhere: `~`

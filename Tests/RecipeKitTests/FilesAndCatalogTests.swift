@@ -57,6 +57,30 @@ struct FilesAndCatalogTests {
         #expect(RecipePaths.stored("~/a.png", from: URL(fileURLWithPath: NSHomeDirectory())) == "a.png")
     }
 
+    @Test func pathsThroughASymlinkStillMeetTheFolder() throws {
+        let real = FileManager.default.temporaryDirectory.appendingPathComponent("recipe-real-\(UUID().uuidString)")
+        let link = FileManager.default.temporaryDirectory.appendingPathComponent("recipe-link-\(UUID().uuidString)")
+        try FileManager.default.createDirectory(at: real.appendingPathComponent("in"), withIntermediateDirectories: true)
+        try FileManager.default.createSymbolicLink(at: link, withDestinationURL: real)
+        defer {
+            try? FileManager.default.removeItem(at: link)
+            try? FileManager.default.removeItem(at: real)
+        }
+        // The folder through the link, a file not written yet through the real path — and the other way round.
+        #expect(RecipePaths.stored(real.path + "/in/new.png", from: link) == "in/new.png")
+        #expect(RecipePaths.stored(link.path + "/in/new.png", from: real) == "in/new.png")
+        #expect(RecipePaths.stored(link.path + "/not/made/yet.png", from: real) == "not/made/yet.png")
+        // /tmp is /private/tmp: one side typed each way, the file not there yet.
+        let folder = URL(fileURLWithPath: "/private/tmp/recipe-\(UUID().uuidString)")
+        try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: folder) }
+        let typed = "/tmp/" + folder.lastPathComponent + "/oct.png"
+        #expect(RecipePaths.stored(typed, from: folder) == "oct.png")
+        #expect(RecipePaths.stored(folder.path + "/oct.png", from: URL(fileURLWithPath: "/tmp/" + folder.lastPathComponent)) == "oct.png")
+        // Outside stays absolute, as typed.
+        #expect(RecipePaths.stored(link.path + "-elsewhere/a.png", from: real) == link.path + "-elsewhere/a.png")
+    }
+
     struct Style: Codable { var name: String; var words: String; var slots: [StyleSlot]? }
 
     @Test func catalogueDecodesAndReportsProblems() {

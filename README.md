@@ -27,7 +27,7 @@ macOS 14 / iOS 17, Swift 6.2 tools, no dependencies.
 | `refuseUnknownKeys` | Strict reading for a file with no version and no fixed outline — a design, a theme — whose types decode themselves: each `init(from:)` refuses a key it does not have, by its whole path, with "did you mean" |
 | `FieldSetter` + `FieldKind` | `--set path=value` on any `Codable` recipe: read the value by its kind, set it in the JSON, decode back; `layers.0.gain` reaches into an array |
 | `FieldPaths` | `seed` finds `settings.seed`: exact path, else the first path ending in it; `layers.1.gain` fits `layers.*.gain`; the closest name for a typo |
-| `RecipeFiles` + `RecipePaths` | Save (never overwriting unasked), load through a strict reader; paths stored relative to the recipe |
+| `RecipeFiles` + `RecipePaths` | Save (never overwriting unasked), load through a strict reader; paths stored relative to the recipe — decided on real locations, so a path typed through a symlink (`/tmp` is `/private/tmp`) or a file not written yet still lands relative |
 | `StyleCatalogs` | Decode JSON style groups; report duplicate or non-kebab names, markers without slots, unused slots, bad defaults; "did you mean" |
 | `SlotSummary` | One slot for a `styles NAME` listing |
 
@@ -143,7 +143,7 @@ an object is left to the decode that follows. Used by the document libraries
 
 ## Tests
 
-`swift test`: 42 tests, no network, no model.
+`swift test`: 43 tests, no network, no model.
 
 ## Licence
 
